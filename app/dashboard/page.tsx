@@ -40,7 +40,23 @@ export default function Dashboard() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { router.push('/'); return }
 
-      const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+      // Retry up to 5 times — Google OAuth callback may not have saved profile yet
+      let prof = null
+      for (let i = 0; i < 5; i++) {
+        const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+        if (data) { prof = data; break }
+        await new Promise(r => setTimeout(r, 800))
+      }
+      // Fallback: create profile if still missing
+      if (!prof) {
+        const username = (user.email?.split('@')[0] || 'user').toLowerCase().replace(/[^a-z0-9_]/g, '_')
+        const { data: newProf } = await supabase.from('profiles').insert({
+          id: user.id,
+          username: username + '_' + Math.floor(Math.random() * 1000),
+          mmr: 1000, current_level: 1, cleared_levels: [],
+        }).select().single()
+        prof = newProf
+      }
       if (!prof) { router.push('/'); return }
       setProfile(prof)
 
